@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sampler — cudacore</title>
+<meta name="description" content="Given a vector of scores over the vocabulary, pick one token. Greedy, temperature, top-k, top-p. Tiny code, huge effect on output style.">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="../index.html" style="text-decoration:none;"><span class="dot"></span>cudacore</a>
+    <nav class="topnav">
+      <a href="../index.html#components">all components</a>
+      <a href="https://github.com/Krishpraj/cudacore_sampler" target="_blank" rel="noopener">repo →</a>
+    </nav>
+  </div>
+</header>
+
+<article class="page">
+  <div class="wrap">
+    <div class="page-eyebrow">stage 2 → 5 · component 6 of 7</div>
+    <h1>Sampler</h1>
+    <p class="subhead">The model gives you a vector of scores — one per possible next token, often 32,000 to 128,000 of them. You have to pick exactly one. How you pick decides whether the model sounds robotic, creative, or unhinged.</p>
+
+    <div class="meta-panel">
+      <div class="meta-item"><div class="label">Stage</div><div class="value">2 → 5</div></div>
+      <div class="meta-item"><div class="label">Difficulty</div><div class="value">★☆☆☆☆</div></div>
+      <div class="meta-item"><div class="label">Language</div><div class="value mono">C++20</div></div>
+      <div class="meta-item"><div class="label">Repo</div><div class="value mono"><a href="https://github.com/Krishpraj/cudacore_sampler" target="_blank" rel="noopener">cudacore_sampler ↗</a></div></div>
+    </div>
+
+    <h2>What "sampling" actually means here</h2>
+    <p>After the forward pass, the model gives you <em>logits</em> — raw, unnormalized scores. Bigger logit = more likely the model wants that token. To turn this into an actual choice, you have a few strategies, from totally deterministic to very creative.</p>
+
+    <div class="analogy">
+      <div class="icon">¶</div>
+      <div class="body">
+        <div class="tag">analogy</div>
+        <p>The model is a sommelier: it ranks every possible word from "definitely yes" to "definitely no." The sampler is you, deciding how to actually pick. Always grab the top pick? You'll be predictable. Pick randomly from the top 40? You'll be more interesting but never weird. Weight a coin by the rankings and flip? Closer to how a person actually speaks.</p>
+      </div>
+    </div>
+
+    <h2>The four strategies</h2>
+
+    <h3>Greedy — always pick the top</h3>
+<pre><code>next = argmax(logits)</code></pre>
+    <p>Deterministic. Same prompt always produces the same output. Good for: testing correctness, code, math, structured output. Bad for: creative writing — gets repetitive and bland because there's no diversity at all.</p>
+
+    <h3>Temperature — flatten or sharpen the distribution</h3>
+<pre><code>probs = softmax(logits / T)
+next = sample_from(probs)</code></pre>
+    <p>Divide logits by T before softmax. <code>T → 0</code> recovers greedy. <code>T = 1</code> uses the model's natural distribution. <code>T &gt; 1</code> flattens it (more diversity, more chaos). Most chat assistants live around T = 0.7.</p>
+
+    <h3>Top-k — keep only the k highest-logit tokens</h3>
+<pre><code>keep the top k logits, set the rest to -inf
+probs = softmax(kept / T)
+next = sample_from(probs)</code></pre>
+    <p>Common <code>k = 40</code>. Bounds the worst-case bizarre choice — the model can't pick a wildcard token from the long tail. Still lets the top candidates compete on their relative merits.</p>
+
+    <h3>Top-p (nucleus) — keep the smallest set summing to probability p</h3>
+<pre><code>sort logits descending → softmax
+keep tokens until cumulative prob ≥ p (e.g., 0.9)
+renormalize, sample</code></pre>
+    <p>Common <code>p = 0.9</code>–<code>0.95</code>. Adapts to the distribution's shape. On a confident prediction ("the cat sat on the ___" → "mat"), you might keep 3 tokens. On an open one ("once upon a ___"), you might keep 100. Generally produces the most natural-feeling output, which is why most APIs default to it.</p>
+
+    <h2>The combined pipeline</h2>
+    <p>In practice, all three filters compose:</p>
+<pre><code>logits = model.forward(...)
+logits = apply_repetition_penalty(logits, recent_tokens)
+logits = top_k_filter(logits, k=40)        // hard cap
+logits = top_p_filter(logits, p=0.9)       // soft adapt
+probs  = softmax(logits / T)               // temperature
+next   = categorical_sample(probs, rng)</code></pre>
+
+    <h2>Sampling from a probability vector</h2>
+    <p>The classic way:</p>
+<pre><code>r = uniform(0, 1)
+cum = 0
+for i in 0..vocab_size:
+    cum += probs[i]
+    if r &lt; cum: return i</code></pre>
+    <p>Linear scan, O(vocab_size). Fine — 128k floats is microseconds compared to the millisecond forward pass. C++ has <code>std::discrete_distribution</code> that does this for you.</p>
+
+    <h2>Repetition penalty</h2>
+    <p>Optional but commonly expected. Divide the logits of recently-generated tokens by a small factor (usually 1.05–1.20) before sampling. Discourages the model from getting stuck in loops ("the the the the..."). Aggressive penalties hurt quality; mild ones are usually safe.</p>
+
+    <h2>Where does this run?</h2>
+    <p>On a single <code>[vocab_size]</code> vector. Maybe 30,000–128,000 floats. Microseconds of work compared to the millisecond forward pass. Cheapest part of the pipeline. Do it on the CPU after copying logits back from the GPU. Once you've optimized everything else, there's a minor win in keeping the next-token-id on the GPU to skip a tiny device→host→device hop, but don't start there.</p>
+
+    <div class="learned">
+      <h3>// what I learned</h3>
+      <ul>
+        <li><strong>Start with greedy. Always.</strong> When you're debugging the forward pass, randomness in sampling makes it harder to spot regressions. Greedy = same prompt → same output → easy bisection.</li>
+        <li><strong>Top-p &gt; top-k for most chat.</strong> Top-k's "always 40 candidates" is too restrictive when the model is confident, and not restrictive enough when it isn't. Top-p adapts.</li>
+        <li><strong>Numerical stability matters here too.</strong> Same softmax-max-subtraction rule. Raw logits can be 30+, exp overflows, NaN propagates, your sampler "picks" the wrong thing silently.</li>
+        <li><strong>Don't softmax twice.</strong> Operate on logits everywhere, softmax once at the end. Two softmaxes is a real bug I had once — the output technically sums to 1 but the distribution is wrong.</li>
+        <li><strong>The sampler returns EOS, the caller stops.</strong> Don't filter EOS out of the distribution. The model has to be able to emit "I'm done"; you just have to listen for it.</li>
+        <li><strong>Seed the RNG once.</strong> Reseeding per call is a common mistake — you get the same "random" choice every step. One <code>std::mt19937</code> at startup, advance it forever.</li>
+      </ul>
+    </div>
+
+    <h2>What's in the repo</h2>
+    <ul>
+      <li><code>sampler.hpp</code> — public interface and config struct</li>
+      <li><code>sampler.cpp</code> — greedy + temperature + top-k + top-p, composable</li>
+      <li><code>rng.hpp</code> — seeded Mersenne Twister wrapper</li>
+    </ul>
+
+    <p style="margin-top: 32px;"><a class="btn primary" href="https://github.com/Krishpraj/cudacore_sampler" target="_blank" rel="noopener">view the source on github →</a></p>
+
+    <nav class="pager">
+      <a href="cuda.html"><div class="dir">← previous</div><div class="title">CUDA kernels</div></a>
+      <a class="next" href="server.html"><div class="dir">next →</div><div class="title">Server</div></a>
+    </nav>
+  </div>
+</article>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div>cudacore // a learning project by <a href="https://github.com/Krishpraj" target="_blank" rel="noopener">@Krishpraj</a></div>
+    <div><a href="../index.html">← back to index</a></div>
+  </div>
+</footer>
+
+</body>
+</html>

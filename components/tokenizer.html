@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tokenizer — cudacore</title>
+<meta name="description" content="What a tokenizer does, why it goes first, and how a BPE/SentencePiece tokenizer turns text into integer IDs.">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="../index.html" style="text-decoration:none;"><span class="dot"></span>cudacore</a>
+    <nav class="topnav">
+      <a href="../index.html#components">all components</a>
+      <a href="https://github.com/Krishpraj/cudacore_tokenizer" target="_blank" rel="noopener">repo →</a>
+    </nav>
+  </div>
+</header>
+
+<article class="page">
+  <div class="wrap">
+    <div class="page-eyebrow">stage 1 · component 1 of 7</div>
+    <h1>Tokenizer</h1>
+    <p class="subhead">The translator at the door. Turns the string <code>"Hello, world!"</code> into a list of integers the model can actually compute on — and turns the model's output integers back into letters you can read.</p>
+
+    <div class="meta-panel">
+      <div class="meta-item"><div class="label">Stage</div><div class="value">1</div></div>
+      <div class="meta-item"><div class="label">Difficulty</div><div class="value">★☆☆☆☆</div></div>
+      <div class="meta-item"><div class="label">Language</div><div class="value mono">C++20</div></div>
+      <div class="meta-item"><div class="label">Repo</div><div class="value mono"><a href="https://github.com/Krishpraj/cudacore_tokenizer" target="_blank" rel="noopener">cudacore_tokenizer ↗</a></div></div>
+    </div>
+
+    <h2>What is it, really?</h2>
+    <p>A neural network is just a giant pile of math on numbers. It can't read letters. So before the model touches your prompt, something has to convert <code>"Hello"</code> into something like <code>[15043, 11526]</code>. That something is the tokenizer. After the model finishes, the same tool runs in reverse — integer output back into text.</p>
+
+    <div class="analogy">
+      <div class="icon">¶</div>
+      <div class="body">
+        <div class="tag">analogy</div>
+        <p>Imagine a library where every word, syllable, and punctuation mark has a numbered card. The tokenizer is the receptionist who looks up your sentence and hands you a stack of cards in the right order. The model only ever shuffles the cards — it never sees the words on them.</p>
+      </div>
+    </div>
+
+    <h2>Why a "token" isn't just a word</h2>
+    <p>You'd think one word = one token. It isn't. Modern tokenizers use <strong>Byte-Pair Encoding (BPE)</strong> or <strong>SentencePiece</strong>, which split text into <em>subword</em> pieces. <code>"running"</code> might be one token (common). <code>"Krishpraj"</code> might be three (rare). Punctuation, leading spaces, and emoji each get their own.</p>
+
+    <p>Why subwords? Two reasons:</p>
+    <ul>
+      <li><strong>Coverage.</strong> A pure-word vocabulary can't handle new names, code, or typos. A subword vocabulary can spell anything by combining pieces.</li>
+      <li><strong>Compression.</strong> Common things become one token. Rare things become a few. The model sees compressed input, which is shorter and cheaper.</li>
+    </ul>
+
+    <h2>How encoding actually works</h2>
+    <p>The tokenizer ships with a fixed <strong>vocabulary file</strong>: a list of around 32,000–128,000 string fragments, each with an integer ID. To encode <code>"hello"</code>:</p>
+    <ol style="padding-left: 22px; color: var(--ink-2);">
+      <li>Look at your text and find the <em>longest prefix</em> that exists in the vocabulary.</li>
+      <li>Emit its ID. Move past it. Repeat.</li>
+      <li>If nothing matches, fall back to an <code>&lt;unk&gt;</code> (unknown) token and skip one character.</li>
+    </ol>
+    <p>Decoding is the reverse: take a list of IDs, look up each one's string fragment, glue them together. The catch — covered below — is that one Unicode character can span multiple tokens, so naive concatenation breaks emoji.</p>
+
+    <h2>The sneaky bits</h2>
+
+    <h3>Spaces aren't really spaces</h3>
+    <p>SentencePiece (Llama, T5) encodes a space as the character <code>▁</code> (U+2581). So <code>" world"</code> becomes <code>"▁world"</code> internally. This is what lets the tokenizer treat <code>"world"</code> at the start of a sentence differently from <code>" world"</code> in the middle, with a single vocabulary entry.</p>
+
+    <h3>BOS and EOS</h3>
+    <p>Most models want a "beginning of sequence" token (<code>&lt;s&gt;</code>) prepended and an "end of sequence" token (<code>&lt;/s&gt;</code>) appended. Get this wrong and the model will produce coherent but slightly off-distribution text.</p>
+
+    <h3>Streaming decode is harder than it looks</h3>
+    <p>When you generate one token at a time, you can't decode it in isolation — a Japanese character might span two BPE tokens, and decoding one alone gives you half a character (renders as <code>�</code>). You have to buffer and emit only complete UTF-8 sequences. This bites everyone the first time.</p>
+
+    <h2>The code, in 30 seconds</h2>
+<pre><code>// Load a vocabulary file
+Tokenizer tok("vocab.txt");
+
+// Text in, integers out
+std::vector&lt;int&gt; ids = tok.encode("Hello, world!");
+// e.g. [1, 15043, 29892, 3186, 29991, 2]
+
+// Integers back to text
+std::string out = tok.decode(ids);
+// "Hello, world!"</code></pre>
+
+    <div class="explainer">
+      <div class="tag">implementation notes</div>
+      <p>The cudacore tokenizer is a small C++ class that loads a tab-separated vocab file, runs a greedy longest-match search to encode, and reverses the lookup to decode. Special tokens (BOS, EOS, UNK) are auto-detected on load. The hard part wasn't the algorithm — it was getting whitespace, the <code>▁</code> marker, and the optional "dummy space prefix" to round-trip exactly the way HuggingFace expects.</p>
+    </div>
+
+    <div class="learned">
+      <h3>// what I learned</h3>
+      <ul>
+        <li><strong>Test the round-trip first, before anything else.</strong> If <code>decode(encode(s)) != s</code> on weird inputs (leading spaces, unicode, code), every later stage gets harder to debug because you'll never be sure if the bug is yours or the tokenizer's.</li>
+        <li><strong>"Tokenizer matches HuggingFace" means byte-for-byte identical.</strong> Off by one ID anywhere and a 7B model can output gibberish — the embedding row it looks up is wrong.</li>
+        <li><strong>The <code>▁</code> trick is elegant once it clicks.</strong> One string fragment, one entry in the vocab, but it carries the "is this word-initial?" bit along with it. No separate punctuation logic needed.</li>
+        <li><strong>Greedy longest-match is the right default for SentencePiece-style vocabs.</strong> Real BPE technically applies <em>ranked merges</em>, which behaves slightly differently on tie cases. For learning, longest-match is correct enough.</li>
+        <li><strong>Don't confuse "byte-level BPE" (GPT-2) with "SentencePiece BPE" (Llama).</strong> Same name, very different rules around bytes vs. characters. The model's config tells you which one it expects.</li>
+      </ul>
+    </div>
+
+    <h2>What's in the repo</h2>
+    <ul>
+      <li><code>tokenizer.hpp</code> — the public class</li>
+      <li><code>tokenizer.cpp</code> — encode, decode, vocab loading</li>
+      <li><code>README.md</code> — full API reference</li>
+    </ul>
+
+    <p style="margin-top: 32px;"><a class="btn primary" href="https://github.com/Krishpraj/cudacore_tokenizer" target="_blank" rel="noopener">view the source on github →</a></p>
+
+    <nav class="pager">
+      <a class="disabled" href="#"><div class="dir">← previous</div><div class="title">(start)</div></a>
+      <a class="next" href="kernels.html"><div class="dir">next →</div><div class="title">Kernels (CPU math)</div></a>
+    </nav>
+  </div>
+</article>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div>cudacore // a learning project by <a href="https://github.com/Krishpraj" target="_blank" rel="noopener">@Krishpraj</a></div>
+    <div><a href="../index.html">← back to index</a></div>
+  </div>
+</footer>
+
+</body>
+</html>

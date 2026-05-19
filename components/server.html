@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Server — cudacore</title>
+<meta name="description" content="From printing tokens to a terminal, to streaming over HTTP with Server-Sent Events, to serving many users at once with continuous batching.">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="../index.html" style="text-decoration:none;"><span class="dot"></span>cudacore</a>
+    <nav class="topnav">
+      <a href="../index.html#components">all components</a>
+      <a href="https://github.com/Krishpraj/cudacore_server" target="_blank" rel="noopener">repo →</a>
+    </nav>
+  </div>
+</header>
+
+<article class="page">
+  <div class="wrap">
+    <div class="page-eyebrow">stage 5 → 7 · component 7 of 7</div>
+    <h1>Server</h1>
+    <p class="subhead">The outermost layer. Stage 5 streams tokens to a terminal as they're generated. Stage 7 turns that into a real HTTP service that handles many concurrent users from a single model with continuous batching.</p>
+
+    <div class="meta-panel">
+      <div class="meta-item"><div class="label">Stage</div><div class="value">5 → 7</div></div>
+      <div class="meta-item"><div class="label">Difficulty</div><div class="value">★★★★☆</div></div>
+      <div class="meta-item"><div class="label">Language</div><div class="value mono">C++20</div></div>
+      <div class="meta-item"><div class="label">Repo</div><div class="value mono"><a href="https://github.com/Krishpraj/cudacore_server" target="_blank" rel="noopener">cudacore_server ↗</a></div></div>
+    </div>
+
+    <h2>Stage 5 — just stream to stdout</h2>
+    <p>This sounds trivial but is the moment your project starts <em>feeling</em> real. Same generation loop as before, but instead of buffering 200 tokens and printing them all at once, you decode and flush each one as it appears.</p>
+
+<pre><code>for step in 0..max_new_tokens:
+    logits    = model.forward(...)
+    next_id   = sampler.sample(logits)
+    text      = tokenizer.decode_incremental(next_id)
+    fwrite(text, stdout); fflush(stdout)
+    if next_id == EOS: break</code></pre>
+
+    <p>That's the entire feature. No new algorithms. But seeing tokens appear in real time — instead of waiting 30 seconds for a paragraph — changes how the project feels.</p>
+
+    <div class="analogy">
+      <div class="icon">¶</div>
+      <div class="body">
+        <div class="tag">analogy</div>
+        <p>Imagine ordering food at a restaurant. "Streaming" is the waiter bringing each course as it's ready. "Non-streaming" is them holding everything in the back until your entire meal is plated, then dropping it all at once. The food is identical; the experience is night and day.</p>
+      </div>
+    </div>
+
+    <h2>Incremental decode — the trap</h2>
+    <p>You can't naively <code>tokenizer.decode([single_id])</code> and concatenate. BPE tokens are not guaranteed to be valid UTF-8 on their own. A Japanese character or emoji might span 2–3 BPE tokens, and decoding one in isolation gives you half a character — which renders as <code>�</code>.</p>
+
+    <p>The fix: keep a buffer of recent token IDs. After each new token, decode the whole buffer, emit only the bytes you haven't emitted before, and check if the tail of your output ends in a valid UTF-8 sequence. If not, wait one more token.</p>
+
+    <h2>Stage 7 — HTTP serving</h2>
+
+    <h3>The transport: Server-Sent Events</h3>
+    <p>OpenAI's <code>/v1/chat/completions</code> with <code>stream: true</code> uses SSE — a one-way streaming protocol over plain HTTP. Each event is one line: <code>data: &lt;json&gt;\n\n</code>, and the stream ends with <code>data: [DONE]\n\n</code>. WebSockets work too but are over-engineered for one-direction streaming.</p>
+
+    <p>Matching the OpenAI API is worth the effort. Every client library, terminal tool, and frontend already speaks it. Your server becomes a drop-in replacement.</p>
+
+    <h3>Continuous batching — the only real optimization that matters at this stage</h3>
+    <p>Naive serving: request comes in, generate to completion, return, then handle the next. GPU sits 90% idle.</p>
+
+    <p>Static batching: wait for N requests, run them together. Better, but they all have to finish before any one returns, and short requests get held up by long ones.</p>
+
+    <p>Continuous batching (vLLM, TGI's approach): on <em>every decode step</em>, the scheduler picks which sequences to advance. Finished sequences leave the batch immediately and return to their caller. New sequences can join mid-step. The GPU stays full; per-request latency stays low. This is the modern production approach.</p>
+
+    <h3>Prefill vs decode interleaving</h3>
+    <p>A new request arrives. Its prefill is one big compute-bound matmul over the whole prompt. Existing requests are doing tiny memory-bound single-token decode steps. If you naively run the prefill first, every existing user pauses for hundreds of milliseconds. The trick is "chunked prefill" — split the prefill into smaller chunks that can be interleaved with decode steps in the same batch.</p>
+
+    <h2>Slot management</h2>
+    <p>With a paged KV cache (Stage 7c), you have a fixed pool of cache pages. The scheduler must:</p>
+    <ul>
+      <li>Refuse new requests when the pool is full, or evict idle ones (and rerun their prefill if they come back).</li>
+      <li>Free a request's pages immediately on completion or client disconnect.</li>
+      <li>Handle request timeouts.</li>
+    </ul>
+
+    <h2>Backpressure</h2>
+    <p>What if the client reads slower than your model generates? Options:</p>
+    <ul>
+      <li><strong>Drop</strong> tokens — rude.</li>
+      <li><strong>Block</strong> the model loop until the socket drains — wastes GPU.</li>
+      <li><strong>Bounded buffer</strong> with cancellation if it fills — what real systems do.</li>
+    </ul>
+    <p>For a single-user demo, just block. For production, you eventually need a bounded buffer per request plus cancellation when a client disconnects (you'd be surprised how often that happens at scale).</p>
+
+    <h2>The OpenAI-compatible request shape</h2>
+<pre><code>POST /v1/chat/completions
+{
+  "model": "tinyllama-1.1b",
+  "messages": [{"role": "user", "content": "Hello"}],
+  "stream": true,
+  "temperature": 0.7
+}
+
+→ stream of:
+data: {"choices":[{"delta":{"content":"Hi"}}]}
+
+data: {"choices":[{"delta":{"content":" there"}}]}
+
+data: [DONE]</code></pre>
+
+    <div class="learned">
+      <h3>// what I learned</h3>
+      <ul>
+        <li><strong>Streaming is a UX feature disguised as a backend feature.</strong> Same total time, but the perceived latency drops to "time until first token." A 5-second wait feels like 0.5 seconds if the first token shows up at 0.5.</li>
+        <li><strong>Always <code>fflush</code>.</strong> stdout is line-buffered by default, so short outputs without newlines look broken — the tokens appear all at once at the end. Pure footgun.</li>
+        <li><strong>SSE > WebSocket for token streaming.</strong> Lighter, simpler, works through firewalls, matches what every existing client expects.</li>
+        <li><strong>Continuous batching is what lets one model serve many users economically.</strong> Without it, your GPU sits idle most of the time. With it, you can serve 8–16 concurrent generations and aggregate tokens/sec scales nearly linearly.</li>
+        <li><strong>Client disconnects are common.</strong> If you don't free their KV cache slot on disconnect, you slowly leak memory and run out of slots at the worst moment.</li>
+        <li><strong>Timeouts kill streams silently.</strong> Default server timeouts are often 30s. Long generations need timeouts in minutes, or the connection dies mid-stream with no useful error to the client.</li>
+        <li><strong>CORS bites browser clients.</strong> First time you hit your API from a webpage, <code>fetch</code> fails for no visible reason. Add the headers.</li>
+      </ul>
+    </div>
+
+    <h2>What's in the repo</h2>
+    <ul>
+      <li><code>runner.cpp</code> — the basic generation loop (Stage 5)</li>
+      <li><code>incremental_decoder.cpp</code> — UTF-8-safe streaming decode</li>
+      <li><code>http_server.cpp</code> — HTTP endpoint (Stage 7)</li>
+      <li><code>openai_api.cpp</code> — OpenAI-compatible request/response schemas</li>
+      <li><code>scheduler.cpp</code> — continuous-batching request scheduler</li>
+    </ul>
+
+    <p style="margin-top: 32px;"><a class="btn primary" href="https://github.com/Krishpraj/cudacore_server" target="_blank" rel="noopener">view the source on github →</a></p>
+
+    <nav class="pager">
+      <a href="sampler.html"><div class="dir">← previous</div><div class="title">Sampler</div></a>
+      <a class="next" href="../index.html"><div class="dir">finished →</div><div class="title">Back to the index</div></a>
+    </nav>
+  </div>
+</article>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div>cudacore // a learning project by <a href="https://github.com/Krishpraj" target="_blank" rel="noopener">@Krishpraj</a></div>
+    <div><a href="../index.html">← back to index</a></div>
+  </div>
+</footer>
+
+</body>
+</html>

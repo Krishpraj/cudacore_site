@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cudacore — building an LLM inference engine from scratch</title>
+<meta name="description" content="A from-scratch LLM inference engine in C++/CUDA. Research notes, plain-English explanations, and source code for every component — for newbies who want to understand how language models actually run.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand"><span class="dot"></span>cudacore</div>
+    <nav class="topnav">
+      <a href="#what">what is it</a>
+      <a href="#loop">the loop</a>
+      <a href="#components">components</a>
+      <a href="#stages">stages</a>
+      <a href="https://github.com/Krishpraj?tab=repositories&q=cudacore" target="_blank" rel="noopener">github</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <div class="eyebrow">// a from-scratch llm inference engine</div>
+    <h1>How a language model<br>actually <em>runs</em>.</h1>
+    <p class="lede">A research log and reference implementation for building an LLM inference engine in C++/CUDA — explained from the ground up for people who can code but have never opened a transformer. Every component has its own repo, its own page, and a short list of what I learned writing it.</p>
+    <div class="cta-row">
+      <a class="btn primary" href="#components">browse components →</a>
+      <a class="btn" href="components/tokenizer.html">start at the beginning</a>
+      <a class="btn" href="https://github.com/Krishpraj?tab=repositories&q=cudacore" target="_blank" rel="noopener">view all repos</a>
+    </div>
+  </div>
+</section>
+
+<section id="what">
+  <div class="wrap">
+    <div class="section-head">
+      <div>
+        <div class="section-tag">01 // what is an inference engine?</div>
+        <h2>The thing between a prompt and a reply.</h2>
+      </div>
+      <p class="kicker">When you type into ChatGPT and watch tokens stream back, an <em>inference engine</em> is what's running. Training built the model. Inference is the act of using it.</p>
+    </div>
+
+    <div class="analogy">
+      <div class="icon">¶</div>
+      <div class="body">
+        <div class="tag">analogy for newbies</div>
+        <p>A trained model is a giant book of numbers. An inference engine is the librarian who can read that book one page at a time — fast enough that you don't notice — and write you back a sentence that makes sense.</p>
+      </div>
+    </div>
+
+    <p style="color: var(--ink-2); font-size: 17px; line-height: 1.65; max-width: 800px;">An LLM is autoregressive: it predicts the <strong>next token</strong> given everything so far, then appends that token to the input and predicts the next one. The "engine" is the machinery that does this loop correctly, fast, and for many users at once. Every component on this site exists because some part of that loop needs to happen, or needs to happen faster.</p>
+  </div>
+</section>
+
+<section id="loop">
+  <div class="wrap">
+    <div class="section-head">
+      <div>
+        <div class="section-tag">02 // hold this in your head the whole time</div>
+        <h2>The loop, written in plain code.</h2>
+      </div>
+      <p class="kicker">Every box on this site maps to a line below. Memorize the loop and the rest is just engineering.</p>
+    </div>
+
+<div class="loop-block"><span class="cm"># prompt comes in as text</span>
+prompt = <span class="kw">"The cat sat on"</span>
+
+<span class="cm"># turn text into integers the model can read</span>
+tokens = <span class="fn">tokenize</span>(prompt)             <span class="cm">→ cudacore_tokenizer</span>
+
+<span class="kw">for</span> step <span class="kw">in</span> <span class="fn">range</span>(max_new_tokens):
+    <span class="cm"># do the giant matrix-multiply pass through the transformer</span>
+    logits     = model.<span class="fn">forward</span>(tokens, cache) <span class="cm">→ cudacore_model + cudacore_kernels + cudacore_cuda</span>
+
+    <span class="cm"># remember the new key/value vectors so we don't recompute them next step</span>
+    cache.<span class="fn">append</span>(...)                          <span class="cm">→ cudacore_kv_cache</span>
+
+    <span class="cm"># turn the model's score vector into a single chosen token</span>
+    next_token = <span class="fn">sample</span>(logits[-<span class="kw">1</span>])           <span class="cm">→ cudacore_sampler</span>
+
+    <span class="cm"># show that token to the user immediately</span>
+    <span class="fn">emit</span>(next_token)                          <span class="cm">→ cudacore_server</span>
+
+    tokens.<span class="fn">append</span>(next_token)
+    <span class="kw">if</span> next_token == EOS: <span class="kw">break</span></div>
+
+    <p style="color: var(--ink-2); font-size: 15px; margin-top: 20px;">That's it. The forward pass is where 99% of the time goes. Everything else exists either to feed it, store its state, choose from its output, or share it across many users.</p>
+  </div>
+</section>
+
+<section id="components">
+  <div class="wrap">
+    <div class="section-head">
+      <div>
+        <div class="section-tag">03 // the seven pieces</div>
+        <h2>Each box is its own repo, its own page.</h2>
+      </div>
+      <p class="kicker">Read in order if you're new — each component teaches a concept the next one builds on. Skip around if you know what you're after.</p>
+    </div>
+
+    <div class="comp-grid">
+
+      <a class="comp-card" href="components/tokenizer.html">
+        <div class="stage">stage 1 · easiest</div>
+        <h3>Tokenizer</h3>
+        <p>Turns text into integer IDs and back. The model never sees letters — only numbers. This is the translator at the door.</p>
+        <div class="difficulty"><span class="on"></span><span></span><span></span><span></span><span></span></div>
+      </a>
+
+      <a class="comp-card" href="components/model.html">
+        <div class="stage">stage 2 · core</div>
+        <h3>Model (CPU forward pass)</h3>
+        <p>The actual transformer: embeddings, attention, MLP, norms, residual connections. Slow but correct. Everything else is an optimization of this.</p>
+        <div class="difficulty"><span class="on"></span><span class="on"></span><span class="on"></span><span></span><span></span></div>
+      </a>
+
+      <a class="comp-card" href="components/kv_cache.html">
+        <div class="stage">stage 3 · biggest win</div>
+        <h3>KV cache</h3>
+        <p>Stop recomputing the past on every step. Turns O(n²) generation into O(n). The single most impactful optimization in inference.</p>
+        <div class="difficulty"><span class="on"></span><span class="on"></span><span></span><span></span><span></span></div>
+      </a>
+
+      <a class="comp-card" href="components/kernels.html">
+        <div class="stage">stage 2 · foundations</div>
+        <h3>Kernels (CPU math)</h3>
+        <p>The pure-C++ building blocks: matmul, softmax, RMSNorm, RoPE, SwiGLU. Reference implementations the GPU versions will be compared against.</p>
+        <div class="difficulty"><span class="on"></span><span class="on"></span><span></span><span></span><span></span></div>
+      </a>
+
+      <a class="comp-card" href="components/cuda.html">
+        <div class="stage">stage 4 · the big one</div>
+        <h3>CUDA kernels</h3>
+        <p>The same math, on the GPU. cuBLAS for matmuls, hand-written kernels for the small ops, fused attention for the win. Where "fast" lives.</p>
+        <div class="difficulty"><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span></div>
+      </a>
+
+      <a class="comp-card" href="components/sampler.html">
+        <div class="stage">stage 2 → 5</div>
+        <h3>Sampler</h3>
+        <p>Given a vector of scores over the whole vocabulary, pick one token. Greedy, temperature, top-k, top-p. Tiny code, huge effect on output style.</p>
+        <div class="difficulty"><span class="on"></span><span></span><span></span><span></span><span></span></div>
+      </a>
+
+      <a class="comp-card" href="components/server.html">
+        <div class="stage">stage 5 → 7</div>
+        <h3>Server</h3>
+        <p>The outermost loop: stream tokens to a terminal, then to a browser, then to many browsers at once with continuous batching.</p>
+        <div class="difficulty"><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span></span></div>
+      </a>
+
+    </div>
+  </div>
+</section>
+
+<section id="stages">
+  <div class="wrap">
+    <div class="section-head">
+      <div>
+        <div class="section-tag">04 // the roadmap</div>
+        <h2>Build it in layers. Don't skip a stage.</h2>
+      </div>
+      <p class="kicker">Each stage has a definition of done. Numbers don't move on until correctness is proven.</p>
+    </div>
+
+    <div class="stages">
+      <div class="stage-row"><div class="num">stage 0</div><div><div class="title">Foundations</div><p class="desc">Read the original attention paper, RoPE, RMSNorm, SwiGLU. Read llama2.c twice. Know what a warp is.</p></div></div>
+      <div class="stage-row"><div class="num">stage 1</div><div><div class="title">Tokenizer</div><p class="desc">Round-trip text → tokens → text, matching HuggingFace byte-for-byte.</p></div></div>
+      <div class="stage-row"><div class="num">stage 2</div><div><div class="title">CPU forward pass</div><p class="desc">Load real weights, generate text on CPU in fp32. Identical first 50 greedy tokens vs transformers.generate.</p></div></div>
+      <div class="stage-row"><div class="num">stage 3</div><div><div class="title">KV cache</div><p class="desc">Same outputs, but per-token latency flat across context length.</p></div></div>
+      <div class="stage-row"><div class="num">stage 4</div><div><div class="title">GPU port</div><p class="desc">cuBLAS for matmul, custom kernels for the small ops, fused attention. Same outputs, 4× to 100× faster.</p></div></div>
+      <div class="stage-row"><div class="num">stage 5</div><div><div class="title">Streaming</div><p class="desc">Tokens print as they're generated. UTF-8 multi-byte sequences render correctly.</p></div></div>
+      <div class="stage-row"><div class="num">stage 6</div><div><div class="title">Quantization</div><p class="desc">fp16, int8, int4. Shrink weights so a 7B model fits on a laptop GPU.</p></div></div>
+      <div class="stage-row"><div class="num">stage 7</div><div><div class="title">Batching & serving</div><p class="desc">Continuous batching, paged KV cache, HTTP API. Serve many users from one model.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div>cudacore // a learning project by <a href="https://github.com/Krishpraj" target="_blank" rel="noopener">@Krishpraj</a></div>
+    <div>each component lives in its own <code>cudacore_*</code> repo</div>
+  </div>
+</footer>
+
+</body>
+</html>

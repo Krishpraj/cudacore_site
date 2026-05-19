@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CUDA kernels — cudacore</title>
+<meta name="description" content="The GPU version of the math. cuBLAS for matmuls, hand-written kernels for the small ops, fused attention for the win. Where 'fast' actually lives.">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="../index.html" style="text-decoration:none;"><span class="dot"></span>cudacore</a>
+    <nav class="topnav">
+      <a href="../index.html#components">all components</a>
+      <a href="https://github.com/Krishpraj/cudacore_cuda" target="_blank" rel="noopener">repo →</a>
+    </nav>
+  </div>
+</header>
+
+<article class="page">
+  <div class="wrap">
+    <div class="page-eyebrow">stage 4 · component 5 of 7</div>
+    <h1>CUDA kernels</h1>
+    <p class="subhead">The same math from <a href="kernels.html">CPU kernels</a>, rewritten to run on the GPU. This is the stage where a runtime stops being a toy and starts being something you'd actually serve from.</p>
+
+    <div class="meta-panel">
+      <div class="meta-item"><div class="label">Stage</div><div class="value">4</div></div>
+      <div class="meta-item"><div class="label">Difficulty</div><div class="value">★★★★★</div></div>
+      <div class="meta-item"><div class="label">Language</div><div class="value mono">CUDA C++</div></div>
+      <div class="meta-item"><div class="label">Repo</div><div class="value mono"><a href="https://github.com/Krishpraj/cudacore_cuda" target="_blank" rel="noopener">cudacore_cuda ↗</a></div></div>
+    </div>
+
+    <h2>Why a GPU at all?</h2>
+    <p>A modern CPU does about 100 GFLOPS of fp32. A consumer GPU (RTX 4070) does ~30 TFLOPS — about 300× more. The catch is the GPU only delivers that throughput if you give it many independent operations to do at once. Matrix multiplies are perfect for this: every element of the output is independent of every other.</p>
+
+    <div class="analogy">
+      <div class="icon">¶</div>
+      <div class="body">
+        <div class="tag">analogy</div>
+        <p>A CPU core is one extremely skilled craftsman — versatile, fast at any one thing, but only one at a time. A GPU is a hangar full of less-versatile workers (10,000 of them) who all do the exact same task at the exact same moment on different pieces of the input. Hand them a matmul: bliss. Hand them an if-statement that branches differently per worker: misery.</p>
+      </div>
+    </div>
+
+    <h2>The GPU mental model</h2>
+    <p>A CUDA program launches a <strong>grid</strong> of <strong>blocks</strong>, each containing many <strong>threads</strong>. Threads in the same block can share fast on-chip memory; threads in different blocks can't talk to each other except through slow global memory.</p>
+
+    <p>Threads execute in groups of 32 called <strong>warps</strong>, in lockstep. If 31 threads in a warp take the <code>if</code> branch and 1 takes the <code>else</code>, the hardware executes both branches and masks the unused results. This is why branchy code kills GPU performance.</p>
+
+    <h3>Memory hierarchy</h3>
+    <ul>
+      <li><strong>Registers</strong> — instant. Per-thread.</li>
+      <li><strong>Shared memory</strong> — ~kB per block, ~100× faster than global. Explicitly managed: you decide what goes here.</li>
+      <li><strong>L1 / L2 cache</strong> — automatic, like CPUs.</li>
+      <li><strong>Global (DRAM)</strong> — GBs available but ~600 cycles to access. Most kernels are bottlenecked here.</li>
+    </ul>
+
+    <h2>The order I built it in</h2>
+
+    <h3>1. Plumbing — get tensors onto the device</h3>
+    <p>A <code>DeviceTensor</code> that wraps <code>cudaMalloc</code> / <code>cudaFree</code>. A <code>cudaCheck</code> macro that aborts loudly on any error — silent CUDA failures are misery to debug because the error doesn't surface at the failing call, it surfaces at the next sync. Always sync after each kernel during debugging.</p>
+
+    <h3>2. cuBLAS for matmuls</h3>
+    <p>I did <em>not</em> write a GEMM from scratch first. cuBLAS is the product of NVIDIA engineers tuning matmul for two decades. Nothing I write will beat <code>cublasSgemm</code> in fp32 or <code>cublasGemmEx</code> in fp16 for the first six months. It's the baseline; my custom kernels exist only where there's no library equivalent.</p>
+
+    <p>Watch out: cuBLAS is <strong>column-major by default</strong>. With row-major tensors, you typically express <code>A @ B</code> as <code>B^T @ A^T</code> with transposed flags. The docs have a whole section on this. Read it twice.</p>
+
+    <h3>3. Hand-written kernels for the small ops</h3>
+    <p>The fun part. These are the operations cuBLAS doesn't cover:</p>
+    <ul>
+      <li><strong>Elementwise</strong> — residual add, SwiGLU activation, RoPE rotation</li>
+      <li><strong>Reductions</strong> — RMSNorm (mean of squares), softmax (max + sum)</li>
+      <li><strong>Gather</strong> — embedding lookup</li>
+    </ul>
+    <p>Each one teaches a CUDA pattern. The reduction pattern is the most reused — warp shuffles for the per-warp reduction, then shared memory to combine across warps.</p>
+
+    <h3>4. Fused kernels</h3>
+    <p>Memory traffic dominates. Reading <code>x</code> from DRAM costs the same as a hundred FLOPs of arithmetic. So you <em>fuse</em>: do as much work as possible per byte loaded.</p>
+    <ul>
+      <li>RMSNorm + the next linear's input prep — read <code>x</code> once instead of twice.</li>
+      <li>Q/K/V projections in one launch — share the read of <code>x</code> across three writes.</li>
+      <li>Attention as a single kernel — never materialize the full score matrix in global memory.</li>
+    </ul>
+
+    <h3>5. FlashAttention</h3>
+    <p>The last one above, done right. FlashAttention v1 keeps the per-block score matrix in shared memory only, tiles the computation, and updates running softmax statistics as it goes. The result: same math as standard attention, but 2–4× faster and using far less memory. Read the paper; many runtimes just link the official implementation rather than rewriting it.</p>
+
+    <h2>The patterns you'll use over and over</h2>
+
+    <h3>Warp-level reduction (sum across 32 threads)</h3>
+<pre><code>float v = my_value;
+for (int offset = 16; offset &gt; 0; offset /= 2)
+    v += __shfl_down_sync(0xffffffff, v, offset);
+// thread 0 of each warp now has the warp sum</code></pre>
+
+    <h3>Coalesced memory access</h3>
+    <p>Adjacent threads in a warp should read adjacent bytes from global memory. Hit this and 32 reads collapse into one transaction. Miss it (strided or scattered) and you waste ~90% of the available bandwidth. Most "why is my kernel slow" questions reduce to "your access pattern isn't coalesced."</p>
+
+    <h3>The roofline lens</h3>
+    <p>For each kernel, ask: how many FLOPs am I doing per byte read? Plot it. Decode-time matmul (matrix × vector) has very low arithmetic intensity — it's memory-bound, and the fix is fewer bytes (quantization). Prefill-time matmul (matrix × matrix on a long prompt) is compute-bound, and the fix is more FLOPs/cycle (Tensor Cores). Knowing which side of the roofline you're on is everything.</p>
+
+    <h2>Profiling — non-negotiable</h2>
+    <p>After every change to a kernel, run Nsight Compute on it. The Speed of Light view shows what % of peak compute and peak memory you're achieving. The warp-stall breakdown tells you exactly what's slowing things down:</p>
+    <ul>
+      <li><code>LG Throttle</code>, <code>Long Scoreboard</code> → memory-bound. Cache, tile, fuse.</li>
+      <li><code>Math Pipe Throttle</code> → compute-bound. fp16 or Tensor Cores will help.</li>
+      <li><code>MIO Throttle</code> → load/store unit saturation, look at coalescing.</li>
+    </ul>
+
+    <div class="learned">
+      <h3>// what I learned</h3>
+      <ul>
+        <li><strong>cuBLAS first, always.</strong> Trying to beat it in week one is a trap. Use it, measure against it, write your own only where it has gaps (small reductions, elementwise, fused ops).</li>
+        <li><strong>Row-major vs column-major bug is unavoidable, plan for it.</strong> Add an assert that compares your CUDA output to the CPU reference on a tiny input for every new kernel. Catches transposes in seconds instead of days.</li>
+        <li><strong>Async errors are the worst.</strong> A kernel launch error doesn't show up at the launch site — it surfaces at the next <code>cudaDeviceSynchronize</code> or memory copy. While developing: sync after every launch.</li>
+        <li><strong>Occupancy is a metric, not a goal.</strong> A kernel with 30% occupancy and great cache behavior beats a 90%-occupancy one thrashing DRAM. Don't optimize occupancy in isolation.</li>
+        <li><strong>Most LLM inference is memory-bandwidth-bound, not compute-bound.</strong> This was the biggest mental model shift. The "tflops" number on the GPU spec sheet doesn't matter for decode. The GB/s number does.</li>
+        <li><strong>FlashAttention is a clever algorithm, not a clever kernel.</strong> The win is keeping the softmax state online as you tile — that lets you avoid writing the full attention matrix to global memory. The CUDA part is the mechanical implementation.</li>
+        <li><strong>Windows + native CUDA is painful.</strong> WSL2 + Ubuntu is a one-evening setup and saves a week.</li>
+      </ul>
+    </div>
+
+    <h2>What's in the repo</h2>
+    <ul>
+      <li><code>device_tensor.cuh</code> — the GPU tensor wrapper</li>
+      <li><code>cublas_wrappers.cuh</code> — typed Sgemm/HgemmEx helpers</li>
+      <li><code>kernels/rms_norm.cu</code>, <code>rope.cu</code>, <code>softmax.cu</code>, <code>elementwise.cu</code></li>
+      <li><code>kernels/attention.cu</code> — fused attention</li>
+      <li><code>cuda_check.cuh</code> — the loud error-check macro</li>
+    </ul>
+
+    <p style="margin-top: 32px;"><a class="btn primary" href="https://github.com/Krishpraj/cudacore_cuda" target="_blank" rel="noopener">view the source on github →</a></p>
+
+    <nav class="pager">
+      <a href="kv_cache.html"><div class="dir">← previous</div><div class="title">KV cache</div></a>
+      <a class="next" href="sampler.html"><div class="dir">next →</div><div class="title">Sampler</div></a>
+    </nav>
+  </div>
+</article>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div>cudacore // a learning project by <a href="https://github.com/Krishpraj" target="_blank" rel="noopener">@Krishpraj</a></div>
+    <div><a href="../index.html">← back to index</a></div>
+  </div>
+</footer>
+
+</body>
+</html>
