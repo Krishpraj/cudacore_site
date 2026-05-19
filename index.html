@@ -7,7 +7,7 @@
 <meta name="description" content="A from-scratch LLM inference engine in C++/CUDA. Research notes, plain-English explanations, and source code for every component â€” for newbies who want to understand how language models actually run.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -56,7 +56,7 @@
       </div>
     </div>
 
-    <p style="color: var(--ink-2); font-size: 17px; line-height: 1.65; max-width: 800px;">An LLM is autoregressive: it predicts the <strong>next token</strong> given everything so far, then appends that token to the input and predicts the next one. The "engine" is the machinery that does this loop correctly, fast, and for many users at once. Every component on this site exists because some part of that loop needs to happen, or needs to happen faster.</p>
+    <p style="color: #333; font-size: 15px; line-height: 1.65; max-width: 720px;">An LLM is autoregressive: it predicts the <strong>next token</strong> given everything so far, then appends that token to the input and predicts the next one. The "engine" is the machinery that does this loop correctly, fast, and for many users at once. Every component on this site exists because some part of that loop needs to happen, or needs to happen faster.</p>
   </div>
 </section>
 
@@ -92,7 +92,7 @@ tokens = <span class="fn">tokenize</span>(prompt)             <span class="cm">â
     tokens.<span class="fn">append</span>(next_token)
     <span class="kw">if</span> next_token == EOS: <span class="kw">break</span></div>
 
-    <p style="color: var(--ink-2); font-size: 15px; margin-top: 20px;">That's it. The forward pass is where 99% of the time goes. Everything else exists either to feed it, store its state, choose from its output, or share it across many users.</p>
+    <p style="color: #666; font-size: 14px; margin-top: 20px;">That's it. The forward pass is where 99% of the time goes. Everything else exists either to feed it, store its state, choose from its output, or share it across many users.</p>
   </div>
 </section>
 

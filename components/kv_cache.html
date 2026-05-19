@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>KV cache — cudacore</title>
 <meta name="description" content="Why the KV cache turns O(n²) generation into O(n), how it's laid out in memory, and why it eventually becomes the dominant memory cost in serving.">
-<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
@@ -66,7 +68,7 @@ V_cache: [max_seq_len, num_kv_heads, head_dim]</code></pre>
 
     <h3>Decode — generate one token at a time</h3>
     <p>Now the loop kicks in. For each new token:</p>
-    <ol style="padding-left: 22px; color: var(--ink-2);">
+    <ol style="padding-left: 20px; color: #333;">
       <li>Forward pass operates on <em>just one new token</em>, not the whole sequence.</li>
       <li>Compute Q, K, V for that one token.</li>
       <li>Append K and V to the cache.</li>

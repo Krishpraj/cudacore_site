@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Model (CPU forward pass) — cudacore</title>
 <meta name="description" content="A Llama-style transformer running entirely on CPU in fp32. The slow, correct reference that every later optimization gets compared against.">
-<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
@@ -45,7 +47,7 @@
     </div>
 
     <h2>The shape of the data, end to end</h2>
-    <ol style="padding-left: 22px; color: var(--ink-2);">
+    <ol style="padding-left: 20px; color: #333;">
       <li><strong>Tokens in.</strong> <code>[10, 1456, 92, 3]</code> — four token IDs.</li>
       <li><strong>Embedding lookup.</strong> Each ID picks out one row of a giant <code>[vocab_size, hidden_dim]</code> table. Now you have a <code>[4, hidden_dim]</code> matrix — one vector per token.</li>
       <li><strong>The 22 layers.</strong> Each layer applies attention then MLP, with residual adds. The shape <code>[4, hidden_dim]</code> never changes — only the numbers in it do.</li>
@@ -98,7 +100,7 @@ x = x + mlp                            // residual add</code></pre>
 
     <h2>How to know it's correct</h2>
     <p>Don't trust the model until intermediate activations match a Python reference within fp32 tolerance:</p>
-    <ol style="padding-left: 22px; color: var(--ink-2);">
+    <ol style="padding-left: 20px; color: #333;">
       <li>In Python: <code>AutoModelForCausalLM</code>, run one forward, dump every layer's hidden state to <code>.npy</code>.</li>
       <li>In C++: add a debug hook that writes <code>x</code> after each layer's residual add.</li>
       <li><code>np.allclose(yours, theirs, atol=1e-4)</code>. The first layer that disagrees is where the bug is.</li>
