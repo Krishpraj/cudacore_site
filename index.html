@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>cudacore — building an LLM inference engine from scratch</title>
-<meta name="description" content="A from-scratch LLM inference engine in C++/CUDA. Research notes, plain-English explanations, and source code for every component — for newbies who want to understand how language models actually run.">
+<title>cudacore · building an LLM inference engine from scratch</title>
+<meta name="description" content="A from-scratch LLM inference engine in C++/CUDA. Research notes, plain-English explanations, and source code for every component. for newbies who want to understand how language models actually run.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -27,9 +27,9 @@
 
 <section class="hero">
   <div class="wrap">
-    <div class="eyebrow">// a from-scratch llm inference engine</div>
+    <div class="eyebrow">a from-scratch llm inference engine</div>
     <h1>How a language model<br>actually <em>runs</em>.</h1>
-    <p class="lede">A research log and reference implementation for building an LLM inference engine in C++/CUDA — explained from the ground up for people who can code but have never opened a transformer. Every component has its own repo, its own page, and a short list of what I learned writing it.</p>
+    <p class="lede">A research log and reference implementation for building an LLM inference engine in C++/CUDA. explained from the ground up for people who can code but have never opened a transformer. Every component has its own repo, its own page, and a short list of what I learned writing it.</p>
     <div class="cta-row">
       <a class="btn primary" href="#components">browse components →</a>
       <a class="btn" href="components/tokenizer.html">start at the beginning</a>
@@ -42,7 +42,7 @@
   <div class="wrap">
     <div class="section-head">
       <div>
-        <div class="section-tag">01 // what is an inference engine?</div>
+        <div class="section-tag">what is an inference engine?</div>
         <h2>The thing between a prompt and a reply.</h2>
       </div>
       <p class="kicker">When you type into ChatGPT and watch tokens stream back, an <em>inference engine</em> is what's running. Training built the model. Inference is the act of using it.</p>
@@ -52,7 +52,7 @@
       <div class="icon">¶</div>
       <div class="body">
         <div class="tag">analogy for newbies</div>
-        <p>A trained model is a giant book of numbers. An inference engine is the librarian who can read that book one page at a time — fast enough that you don't notice — and write you back a sentence that makes sense.</p>
+        <p>A trained model is a giant book of numbers. An inference engine is the librarian who can read that book one page at a time. fast enough that you don't notice. and write you back a sentence that makes sense.</p>
       </div>
     </div>
 
@@ -64,7 +64,7 @@
   <div class="wrap">
     <div class="section-head">
       <div>
-        <div class="section-tag">02 // hold this in your head the whole time</div>
+        <div class="section-tag">hold this in your head the whole time</div>
         <h2>The loop, written in plain code.</h2>
       </div>
       <p class="kicker">Every box on this site maps to a line below. Memorize the loop and the rest is just engineering.</p>
@@ -100,10 +100,10 @@ tokens = <span class="fn">tokenize</span>(prompt)             <span class="cm">�
   <div class="wrap">
     <div class="section-head">
       <div>
-        <div class="section-tag">03 // the seven pieces</div>
+        <div class="section-tag">the seven pieces</div>
         <h2>Each box is its own repo, its own page.</h2>
       </div>
-      <p class="kicker">Read in order if you're new — each component teaches a concept the next one builds on. Skip around if you know what you're after.</p>
+      <p class="kicker">Read in order if you're new. each component teaches a concept the next one builds on. Skip around if you know what you're after.</p>
     </div>
 
     <div class="comp-grid">
@@ -111,7 +111,7 @@ tokens = <span class="fn">tokenize</span>(prompt)             <span class="cm">�
       <a class="comp-card" href="components/tokenizer.html">
         <div class="stage">stage 1 · easiest</div>
         <h3>Tokenizer</h3>
-        <p>Turns text into integer IDs and back. The model never sees letters — only numbers. This is the translator at the door.</p>
+        <p>Turns text into integer IDs and back. The model never sees letters. only numbers. This is the translator at the door.</p>
         <div class="difficulty"><span class="on"></span><span></span><span></span><span></span><span></span></div>
       </a>
 
@@ -165,7 +165,7 @@ tokens = <span class="fn">tokenize</span>(prompt)             <span class="cm">�
   <div class="wrap">
     <div class="section-head">
       <div>
-        <div class="section-tag">04 // the roadmap</div>
+        <div class="section-tag">the roadmap</div>
         <h2>Build it in layers. Don't skip a stage.</h2>
       </div>
       <p class="kicker">Each stage has a definition of done. Numbers don't move on until correctness is proven.</p>
@@ -186,7 +186,7 @@ tokens = <span class="fn">tokenize</span>(prompt)             <span class="cm">�
 
 <footer class="site-foot">
   <div class="wrap">
-    <div>cudacore // a learning project by <a href="https://github.com/Krishpraj" target="_blank" rel="noopener">@Krishpraj</a></div>
+    <div>cudacore, a learning project by <a href="https://github.com/Krishpraj" target="_blank" rel="noopener">@Krishpraj</a></div>
     <div>each component lives in its own <code>cudacore_*</code> repo</div>
   </div>
 </footer>

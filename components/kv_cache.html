@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>KV cache — cudacore</title>
+<title>KV cache · cudacore</title>
 <meta name="description" content="Why the KV cache turns O(n²) generation into O(n), how it's laid out in memory, and why it eventually becomes the dominant memory cost in serving.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -44,12 +44,12 @@
       <div class="icon">¶</div>
       <div class="body">
         <div class="tag">analogy</div>
-        <p>You're a detective interviewing witnesses to build a case. Without a notebook, every new witness means you'd have to re-interview every previous one too — by witness 50 you'd never sleep. The KV cache is the notebook: write each interview down once, flip back when you need it.</p>
+        <p>You're a detective interviewing witnesses to build a case. Without a notebook, every new witness means you'd have to re-interview every previous one too. by witness 50 you'd never sleep. The KV cache is the notebook: write each interview down once, flip back when you need it.</p>
       </div>
     </div>
 
     <h2>What gets cached, exactly</h2>
-    <p>In attention, each token contributes a <strong>query</strong>, a <strong>key</strong>, and a <strong>value</strong> vector to each layer. Only K and V need to be remembered — Q is consumed immediately to compute that token's attention output and never looked at again.</p>
+    <p>In attention, each token contributes a <strong>query</strong>, a <strong>key</strong>, and a <strong>value</strong> vector to each layer. Only K and V need to be remembered. Q is consumed immediately to compute that token's attention output and never looked at again.</p>
 
     <p>So per token, per layer, you save:</p>
 <pre><code>K_t = W_k · x_t    // shape: [num_kv_heads, head_dim]
@@ -63,10 +63,10 @@ V_cache: [max_seq_len, num_kv_heads, head_dim]</code></pre>
 
     <h2>Two phases: prefill vs decode</h2>
 
-    <h3>Prefill — process the whole prompt</h3>
-    <p>The user gives you a prompt of length P. You run the full forward pass once on all P tokens at once. K and V are computed for every position. You shove all of them into the cache in one shot. This phase is <strong>compute-bound</strong> — one big matrix multiply per layer.</p>
+    <h3>Prefill: process the whole prompt</h3>
+    <p>The user gives you a prompt of length P. You run the full forward pass once on all P tokens at once. K and V are computed for every position. You shove all of them into the cache in one shot. This phase is <strong>compute-bound</strong>: one big matrix multiply per layer.</p>
 
-    <h3>Decode — generate one token at a time</h3>
+    <h3>Decode: generate one token at a time</h3>
     <p>Now the loop kicks in. For each new token:</p>
     <ol style="padding-left: 20px; color: #333;">
       <li>Forward pass operates on <em>just one new token</em>, not the whole sequence.</li>
@@ -75,7 +75,7 @@ V_cache: [max_seq_len, num_kv_heads, head_dim]</code></pre>
       <li>Attention reads the <em>entire</em> cache for keys/values, but Q is still just one row.</li>
       <li>Output one new token, repeat.</li>
     </ol>
-    <p>This phase is <strong>memory-bound</strong>. The matmul has Q-rows = 1 — there's barely any compute to do. Most of the time goes to streaming weights and the cache through GPU memory.</p>
+    <p>This phase is <strong>memory-bound</strong>. The matmul has Q-rows = 1. there's barely any compute to do. Most of the time goes to streaming weights and the cache through GPU memory.</p>
 
     <h2>How big does it get?</h2>
     <p>Per token, per layer, the cache stores <code>2 × num_kv_heads × head_dim × bytes_per_element</code> bytes (×2 for K and V).</p>
@@ -90,15 +90,15 @@ Llama-2 70B, fp16:
   per token: 2 × 8 × 128 × 2 × 80 = 327,680 bytes
   at seq_len=4096:                ≈ 1.3 GB    (suddenly significant)</code></pre>
 
-    <p>For long-context serving (32k, 128k tokens), the cache can dwarf the model weights themselves. This is why "PagedAttention" exists in Stage 7 — to avoid pre-allocating the worst case.</p>
+    <p>For long-context serving (32k, 128k tokens), the cache can dwarf the model weights themselves. This is why "PagedAttention" exists in Stage 7. to avoid pre-allocating the worst case.</p>
 
-    <h2>Memory layout — the one decision that matters</h2>
+    <h2>Memory layout: the one decision that matters</h2>
     <p>Two reasonable choices for how to lay out K in memory:</p>
 
-    <p><code>[seq, head, dim]</code> — natural for <strong>appending</strong>. A new token's K is contiguous; you just write the next slot.</p>
-    <p><code>[head, seq, dim]</code> — natural for the <strong>attention matmul</strong>. Each head's keys are contiguous, which is what the per-head <code>q · K^T</code> needs.</p>
+    <p><code>[seq, head, dim]</code>: natural for <strong>appending</strong>. A new token's K is contiguous; you just write the next slot.</p>
+    <p><code>[head, seq, dim]</code>: natural for the <strong>attention matmul</strong>. Each head's keys are contiguous, which is what the per-head <code>q · K^T</code> needs.</p>
 
-    <p>Production runtimes use the second. The append becomes scattered writes (small cost per token) but the read — which happens way more often — gets the contiguous layout (big payoff). For a Stage 3 reference, either is fine. Pick one once you understand the tradeoff.</p>
+    <p>Production runtimes use the second. The append becomes scattered writes (small cost per token) but the read. which happens way more often. gets the contiguous layout (big payoff). For a Stage 3 reference, either is fine. Pick one once you understand the tradeoff.</p>
 
     <h2>The API, in pseudo-code</h2>
 <pre><code>struct KVCache {
@@ -120,11 +120,11 @@ V_slice = cache.V[layer, 0 .. current_len];
 // out    = softmax(scores) @ V_slice</code></pre>
 
     <div class="learned">
-      <h3>// what I learned</h3>
+      <h3>what i learned</h3>
       <ul>
         <li><strong>It's the biggest single optimization in inference.</strong> The first time you turn it on you go from 30s for 50 tokens to 3s. Every other stage's gains are smaller in percentage terms.</li>
-        <li><strong>Off-by-one on <code>current_len</code> is the recurring bug.</strong> Increment <em>after</em> the write, not before. Attention reads <code>[0..current_len)</code> — read past that and you're attending to uninitialized garbage which still produces "valid looking" tokens.</li>
-        <li><strong>Pre-allocating max_seq_len is fine for a single-user toy.</strong> It's wasteful for serving — a request asking for 50 tokens shouldn't reserve space for 2048. That's the motivation for PagedAttention later.</li>
+        <li><strong>Off-by-one on <code>current_len</code> is the recurring bug.</strong> Increment <em>after</em> the write, not before. Attention reads <code>[0..current_len)</code>: read past that and you're attending to uninitialized garbage which still produces "valid looking" tokens.</li>
+        <li><strong>Pre-allocating max_seq_len is fine for a single-user toy.</strong> It's wasteful for serving. a request asking for 50 tokens shouldn't reserve space for 2048. That's the motivation for PagedAttention later.</li>
         <li><strong>Different sequences need different cache slots.</strong> The moment you batch (Stage 7), each sequence has its own cache. You can't share a contiguous block across sequences with different lengths. This is the entire motivation for vLLM's paged design.</li>
         <li><strong>The "prefill = compute-bound, decode = memory-bound" distinction is the lens for all later optimization.</strong> Different bottlenecks need different fixes. Throwing more FLOPs at decode does nothing if you're already saturating DRAM.</li>
       </ul>
@@ -132,9 +132,9 @@ V_slice = cache.V[layer, 0 .. current_len];
 
     <h2>What's in the repo</h2>
     <ul>
-      <li><code>kv_cache.hpp / kv_cache.cpp</code> — the cache struct + append/read</li>
+      <li><code>kv_cache.hpp / kv_cache.cpp</code>: the cache struct + append/read</li>
       <li>Notes on layout choices and memory budgets</li>
-      <li><code>README.md</code> — full design rationale and pitfalls</li>
+      <li><code>README.md</code>: full design rationale and pitfalls</li>
     </ul>
 
     <p style="margin-top: 32px;"><a class="btn primary" href="https://github.com/Krishpraj/cudacore_kv_cache" target="_blank" rel="noopener">view the source on github →</a></p>
@@ -148,7 +148,7 @@ V_slice = cache.V[layer, 0 .. current_len];
 
 <footer class="site-foot">
   <div class="wrap">
-    <div>cudacore // a learning project by <a href="https://github.com/Krishpraj" target="_blank" rel="noopener">@Krishpraj</a></div>
+    <div>cudacore, a learning project by <a href="https://github.com/Krishpraj" target="_blank" rel="noopener">@Krishpraj</a></div>
     <div><a href="../index.html">← back to index</a></div>
   </div>
 </footer>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Model (CPU forward pass) — cudacore</title>
+<title>Model (CPU forward pass) · cudacore</title>
 <meta name="description" content="A Llama-style transformer running entirely on CPU in fp32. The slow, correct reference that every later optimization gets compared against.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -26,7 +26,7 @@
   <div class="wrap">
     <div class="page-eyebrow">stage 2 · component 3 of 7</div>
     <h1>Model (CPU forward pass)</h1>
-    <p class="subhead">A real, working Llama-family transformer that loads HuggingFace weights and generates text — running entirely on a single CPU thread, fp32, no shortcuts. Slow on purpose. Correct above all else.</p>
+    <p class="subhead">A real, working Llama-family transformer that loads HuggingFace weights and generates text. running entirely on a single CPU thread, fp32, no shortcuts. Slow on purpose. Correct above all else.</p>
 
     <div class="meta-panel">
       <div class="meta-item"><div class="label">Stage</div><div class="value">2</div></div>
@@ -36,21 +36,21 @@
     </div>
 
     <h2>What is the "forward pass"?</h2>
-    <p>One run of the model from input to output. You hand it a list of token IDs, and it hands back a vector of scores — one score for every possible next token in the vocabulary. The token with the highest score (greedy sampling) is what the model "wants" to say next.</p>
+    <p>One run of the model from input to output. You hand it a list of token IDs, and it hands back a vector of scores. one score for every possible next token in the vocabulary. The token with the highest score (greedy sampling) is what the model "wants" to say next.</p>
 
     <div class="analogy">
       <div class="icon">¶</div>
       <div class="body">
         <div class="tag">analogy</div>
-        <p>Picture an assembly line, 22 stations long. A vector of numbers travels down the line. Each station tweaks it a little — normalizes it, mixes information from earlier tokens, runs it through a small neural network, adds the result back to the original. By the time it reaches the end, the model has computed what should come next.</p>
+        <p>Picture an assembly line, 22 stations long. A vector of numbers travels down the line. Each station tweaks it a little. normalizes it, mixes information from earlier tokens, runs it through a small neural network, adds the result back to the original. By the time it reaches the end, the model has computed what should come next.</p>
       </div>
     </div>
 
     <h2>The shape of the data, end to end</h2>
     <ol style="padding-left: 20px; color: #333;">
-      <li><strong>Tokens in.</strong> <code>[10, 1456, 92, 3]</code> — four token IDs.</li>
-      <li><strong>Embedding lookup.</strong> Each ID picks out one row of a giant <code>[vocab_size, hidden_dim]</code> table. Now you have a <code>[4, hidden_dim]</code> matrix — one vector per token.</li>
-      <li><strong>The 22 layers.</strong> Each layer applies attention then MLP, with residual adds. The shape <code>[4, hidden_dim]</code> never changes — only the numbers in it do.</li>
+      <li><strong>Tokens in.</strong> <code>[10, 1456, 92, 3]</code>: four token IDs.</li>
+      <li><strong>Embedding lookup.</strong> Each ID picks out one row of a giant <code>[vocab_size, hidden_dim]</code> table. Now you have a <code>[4, hidden_dim]</code> matrix. one vector per token.</li>
+      <li><strong>The 22 layers.</strong> Each layer applies attention then MLP, with residual adds. The shape <code>[4, hidden_dim]</code> never changes. only the numbers in it do.</li>
       <li><strong>Final norm.</strong> One last RMSNorm on the last position only.</li>
       <li><strong>LM head.</strong> A final matmul that projects from <code>hidden_dim</code> up to <code>vocab_size</code>. You now have a score for every possible next token. Done.</li>
     </ol>
@@ -58,7 +58,7 @@
     <h2>What happens inside one layer</h2>
     <p>The two halves of every transformer block: an <strong>attention</strong> sublayer that mixes information across positions, then an <strong>MLP</strong> sublayer that thinks position-by-position.</p>
 
-    <h3>Attention — "what should I pay attention to in the past?"</h3>
+    <h3>Attention. "what should I pay attention to in the past?"</h3>
 <pre><code>x_norm = RMSNorm(x)
 
 q = W_q · x_norm     // "what am I looking for?"
@@ -82,7 +82,7 @@ x = x + attn                         // residual add</code></pre>
       <li>The causal mask ensures token <em>t</em> only sees tokens <em>0..t</em>. This is what makes the model autoregressive.</li>
     </ul>
 
-    <h3>MLP — "now think about it alone"</h3>
+    <h3>MLP. "now think about it alone"</h3>
 <pre><code>x_norm = RMSNorm(x)
 
 gate = W_gate · x_norm
@@ -90,13 +90,13 @@ up   = W_up   · x_norm
 mlp  = W_down · ( silu(gate) * up )    // SwiGLU
 x = x + mlp                            // residual add</code></pre>
 
-    <p>No mixing across positions here. Each token is reprocessed independently through a 2-layer feed-forward network. The hidden dim doubles or triples inside before projecting back down — that wider middle is where most of the model's parameters live.</p>
+    <p>No mixing across positions here. Each token is reprocessed independently through a 2-layer feed-forward network. The hidden dim doubles or triples inside before projecting back down. that wider middle is where most of the model's parameters live.</p>
 
     <h2>Grouped-query attention (GQA), in one paragraph</h2>
     <p>Llama-2 70B and Llama-3 reduce KV cache size by sharing key/value heads across multiple query heads. If you have 32 Q-heads and 8 KV-heads, every group of 4 Q-heads reads from the same K and V. The model gets the expressiveness of 32 query views but only pays for 8 keys/values. For TinyLlama (the easy starting model) <code>num_heads == num_kv_heads</code> and GQA collapses to standard multi-head attention.</p>
 
     <h2>Loading real weights</h2>
-    <p>HuggingFace ships models as <code>model.safetensors</code> — a JSON header with tensor names, shapes, and dtypes, followed by raw bytes. Tiny format, takes a weekend to write a parser. The cudacore loader handles fp32 single-shard files and binds about a dozen named tensors per layer to in-memory pointers.</p>
+    <p>HuggingFace ships models as <code>model.safetensors</code>: a JSON header with tensor names, shapes, and dtypes, followed by raw bytes. Tiny format, takes a weekend to write a parser. The cudacore loader handles fp32 single-shard files and binds about a dozen named tensors per layer to in-memory pointers.</p>
 
     <h2>How to know it's correct</h2>
     <p>Don't trust the model until intermediate activations match a Python reference within fp32 tolerance:</p>
@@ -108,12 +108,12 @@ x = x + mlp                            // residual add</code></pre>
     </ol>
 
     <div class="learned">
-      <h3>// what I learned</h3>
+      <h3>what i learned</h3>
       <ul>
         <li><strong>Matrix layout decides your sanity.</strong> Row-major vs column-major; Linear weights as <code>(out, in)</code> vs <code>(in, out)</code>. Pick a convention, write it down, never deviate. Most "garbage output" bugs are a silently transposed matmul.</li>
         <li><strong>The 7th token rule.</strong> If your output diverges from HuggingFace at token 7, the bug is real. Fix it now. Debugging a wrong forward pass at Stage 5 with batching on top is impossible.</li>
         <li><strong>RoPE is the bug.</strong> If outputs look <em>almost</em> right but slowly drift, it's RoPE. Either the pairing convention is wrong, or you forgot to scale theta correctly per dim.</li>
-        <li><strong>Tied embeddings save 100MB.</strong> Many small models reuse the embedding matrix as the LM head (<code>tie_word_embeddings: true</code>). Half the checkpoints don't include <code>lm_head.weight</code> at all — you're supposed to alias it to <code>embed_tokens.weight</code>.</li>
+        <li><strong>Tied embeddings save 100MB.</strong> Many small models reuse the embedding matrix as the LM head (<code>tie_word_embeddings: true</code>). Half the checkpoints don't include <code>lm_head.weight</code> at all. you're supposed to alias it to <code>embed_tokens.weight</code>.</li>
         <li><strong>No KV cache yet is fine for now.</strong> Stage 2's job is correctness. Recomputing all past tokens on every step is wasteful, but it's also the simplest possible code path, and you want simple here.</li>
         <li><strong>The "block" is really tiny.</strong> Two matmul stages, two norms, two residual adds. Modern LLMs are almost embarrassingly simple architectures stacked deep with a lot of data behind them.</li>
       </ul>
@@ -121,11 +121,11 @@ x = x + mlp                            // residual add</code></pre>
 
     <h2>What's in the repo</h2>
     <ul>
-      <li><code>config.hpp / config.cpp</code> — parsed <code>config.json</code></li>
-      <li><code>ops.hpp / ops.cpp</code> — RMSNorm, matmul, softmax, RoPE, SwiGLU, attention</li>
-      <li><code>weights.hpp / weights.cpp</code> — hand-rolled safetensors loader</li>
-      <li><code>model.hpp / model.cpp</code> — the <code>Model</code> class and <code>forward()</code></li>
-      <li><code>README.md</code> — full architecture reference + correctness checklist</li>
+      <li><code>config.hpp / config.cpp</code>: parsed <code>config.json</code></li>
+      <li><code>ops.hpp / ops.cpp</code>. RMSNorm, matmul, softmax, RoPE, SwiGLU, attention</li>
+      <li><code>weights.hpp / weights.cpp</code>: hand-rolled safetensors loader</li>
+      <li><code>model.hpp / model.cpp</code>: the <code>Model</code> class and <code>forward()</code></li>
+      <li><code>README.md</code>: full architecture reference + correctness checklist</li>
     </ul>
 
     <p style="margin-top: 32px;"><a class="btn primary" href="https://github.com/Krishpraj/cudacore_model" target="_blank" rel="noopener">view the source on github →</a></p>
@@ -139,7 +139,7 @@ x = x + mlp                            // residual add</code></pre>
 
 <footer class="site-foot">
   <div class="wrap">
-    <div>cudacore // a learning project by <a href="https://github.com/Krishpraj" target="_blank" rel="noopener">@Krishpraj</a></div>
+    <div>cudacore, a learning project by <a href="https://github.com/Krishpraj" target="_blank" rel="noopener">@Krishpraj</a></div>
     <div><a href="../index.html">← back to index</a></div>
   </div>
 </footer>

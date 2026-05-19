@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kernels (CPU math) — cudacore</title>
+<title>Kernels (CPU math) · cudacore</title>
 <meta name="description" content="The pure-C++ math building blocks of a transformer: matmul, softmax, RMSNorm, RoPE, SwiGLU. Why each one exists and how each one works.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -26,7 +26,7 @@
   <div class="wrap">
     <div class="page-eyebrow">stage 2 · component 2 of 7</div>
     <h1>Kernels (CPU math)</h1>
-    <p class="subhead">The half-dozen math functions a transformer is built out of, written in plain C++ first. These are the reference implementations — the GPU versions will be benchmarked against these for correctness.</p>
+    <p class="subhead">The half-dozen math functions a transformer is built out of, written in plain C++ first. These are the reference implementations. the GPU versions will be benchmarked against these for correctness.</p>
 
     <div class="meta-panel">
       <div class="meta-item"><div class="label">Stage</div><div class="value">2</div></div>
@@ -36,7 +36,7 @@
     </div>
 
     <h2>What is a "kernel"?</h2>
-    <p>In this context, a kernel is just a small math function: take some numbers in, produce some numbers out. Matrix multiply is a kernel. Softmax is a kernel. RMSNorm is a kernel. The word becomes more loaded when we move to CUDA — there a "kernel" is a specific kind of function that runs in parallel on the GPU — but for now, think "small math routine."</p>
+    <p>In this context, a kernel is just a small math function: take some numbers in, produce some numbers out. Matrix multiply is a kernel. Softmax is a kernel. RMSNorm is a kernel. The word becomes more loaded when we move to CUDA. there a "kernel" is a specific kind of function that runs in parallel on the GPU. but for now, think "small math routine."</p>
 
     <div class="analogy">
       <div class="icon">¶</div>
@@ -59,7 +59,7 @@
     <p>That's it. Slow but correct. On CPU you'd link OpenBLAS or MKL for the real version; on GPU you'd call cuBLAS. The hand-rolled version exists so you can be certain the optimized one gives the same answer.</p>
 
     <h3>Softmax (numerically stable)</h3>
-    <p>Turns a vector of arbitrary real numbers into a probability distribution — all positive, summing to 1. The trick: subtract the max first.</p>
+    <p>Turns a vector of arbitrary real numbers into a probability distribution. all positive, summing to 1. The trick: subtract the max first.</p>
 <pre><code>m   = max(x)
 e   = exp(x - m)     // largest value of e is now exp(0) = 1
 s   = sum(e)
@@ -89,7 +89,7 @@ silu(z) = z * sigmoid(z) = z / (1 + exp(-z))</code></pre>
     <p>SwiGLU performs better than plain ReLU or GeLU at scale. The "gate × up" pattern lets the network learn which features to suppress per-position before the down-projection.</p>
 
     <h3>Residual add</h3>
-    <p>Boring but essential: <code>out = a + b</code>, elementwise. Every layer's output is added back to its input — this is what lets gradients flow through a 32-layer (or 96-layer) stack during training, and at inference it's just two reads and a write.</p>
+    <p>Boring but essential: <code>out = a + b</code>, elementwise. Every layer's output is added back to its input. this is what lets gradients flow through a 32-layer (or 96-layer) stack during training, and at inference it's just two reads and a write.</p>
 
     <h2>The order they appear in one transformer block</h2>
 <pre><code>x_in       = x[t]
@@ -110,24 +110,24 @@ x          = residual_add(x, mlp_out)</code></pre>
     <p>That's one layer. Stack 22 of those (TinyLlama) or 32 (Llama-7B) and you have a model. The math really is just this.</p>
 
     <div class="learned">
-      <h3>// what I learned</h3>
+      <h3>what i learned</h3>
       <ul>
         <li><strong>Numerical stability is sneaky.</strong> Softmax without the max-subtraction trick produced NaNs on perfectly innocent prompts the first time long contexts hit. It looks correct on small inputs.</li>
-        <li><strong>RoPE has two conventions and the model files don't tell you which.</strong> HuggingFace pairs dim <code>i</code> with dim <code>i + head_dim/2</code>. llama.cpp pairs <code>2i</code> with <code>2i+1</code>. Same weights, different math, both look "plausible" — output stays coherent for 5–10 tokens then drifts. Painful bug.</li>
+        <li><strong>RoPE has two conventions and the model files don't tell you which.</strong> HuggingFace pairs dim <code>i</code> with dim <code>i + head_dim/2</code>: llama.cpp pairs <code>2i</code> with <code>2i+1</code>. Same weights, different math, both look "plausible". output stays coherent for 5–10 tokens then drifts. Painful bug.</li>
         <li><strong>Don't optimize the CPU kernels.</strong> You're moving to GPU. Make them correct, easy to read, easy to compare bit-for-bit against PyTorch. That's the entire job.</li>
         <li><strong>Row-major vs column-major: pick one and write it down.</strong> The cuBLAS step later assumes column-major by default. Get the CPU side aligned now and you save a week.</li>
-        <li><strong>SwiGLU is just three matmuls and a sigmoid.</strong> The fancy name does it no favors — it's elementwise after the matmuls. The "wow" comes from the gate pattern, not the activation function itself.</li>
+        <li><strong>SwiGLU is just three matmuls and a sigmoid.</strong> The fancy name does it no favors. it's elementwise after the matmuls. The "wow" comes from the gate pattern, not the activation function itself.</li>
       </ul>
     </div>
 
     <h2>What's in the repo</h2>
     <ul>
-      <li><code>matmul.cpp</code> — naive triple loop, optional BLAS wrapper</li>
-      <li><code>softmax.cpp</code> — stable softmax over the last dimension</li>
-      <li><code>norm.cpp</code> — RMSNorm (and LayerNorm if you target GPT-2)</li>
-      <li><code>rope.cpp</code> — applied to Q and K, not V</li>
-      <li><code>activations.cpp</code> — SiLU, plus mul-and-add for SwiGLU</li>
-      <li><code>README.md</code> — the math, with the pitfalls called out</li>
+      <li><code>matmul.cpp</code>: naive triple loop, optional BLAS wrapper</li>
+      <li><code>softmax.cpp</code>: stable softmax over the last dimension</li>
+      <li><code>norm.cpp</code>. RMSNorm (and LayerNorm if you target GPT-2)</li>
+      <li><code>rope.cpp</code>: applied to Q and K, not V</li>
+      <li><code>activations.cpp</code>. SiLU, plus mul-and-add for SwiGLU</li>
+      <li><code>README.md</code>: the math, with the pitfalls called out</li>
     </ul>
 
     <p style="margin-top: 32px;"><a class="btn primary" href="https://github.com/Krishpraj/cudacore_kernels" target="_blank" rel="noopener">view the source on github →</a></p>
@@ -141,7 +141,7 @@ x          = residual_add(x, mlp_out)</code></pre>
 
 <footer class="site-foot">
   <div class="wrap">
-    <div>cudacore // a learning project by <a href="https://github.com/Krishpraj" target="_blank" rel="noopener">@Krishpraj</a></div>
+    <div>cudacore, a learning project by <a href="https://github.com/Krishpraj" target="_blank" rel="noopener">@Krishpraj</a></div>
     <div><a href="../index.html">← back to index</a></div>
   </div>
 </footer>
